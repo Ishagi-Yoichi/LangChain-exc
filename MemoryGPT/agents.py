@@ -1,9 +1,14 @@
 from typing import Any, Callable, List, TypedDict, Union
 
 from langchain.agents import create_agent
-from langchain.agents.middleware import ModelRequest, ModelResponse, wrap_model_call
+from langchain.agents.middleware import (
+    ModelRequest,
+    ModelResponse,
+    wrap_model_call,
+    wrap_tool_call,
+)
 from langchain.tools import tool
-from langchain_core.messages import AnyMessage, HumanMessage
+from langchain_core.messages import AnyMessage, HumanMessage, ToolMessage
 
 from models import advanced_model, base_model
 
@@ -87,11 +92,23 @@ def dynamic_model_selection(request: ModelRequest, handler) -> ModelResponse:
     return handler(request.override(model=model))
 
 
+@wrap_tool_call
+def handle_tool_errors(request, handler):
+    """Handle tool execution errors with custom messages."""
+    try:
+        return handler(request)
+    except Exception as e:
+        return ToolMessage(
+            content=f"Tool error: Please check your input and try again. ({str(e)})",
+            tool_call_id=request.tool_call["id"],
+        )
+
+
 agent = create_agent(
     model=base_model,
     tools=MASTER_TOOLS,
     state_schema=CustomAgentState,
-    middleware=[state_based_tools, dynamic_model_selection],
+    middleware=[state_based_tools, dynamic_model_selection, handle_tool_errors],
     system_prompt="You are a helpful assistant",
 )
 
